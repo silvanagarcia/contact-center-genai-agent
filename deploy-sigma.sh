@@ -167,12 +167,12 @@ fi
 if [[ "$STACK_TARGET" == "all" || "$STACK_TARGET" == "base-kb" ]]; then
     deploy_stack "sigma-${ENVIRONMENT}-knowledge-base" \
         "infrastructure/bedrock-KB.yaml" \
-        "S3BucketName=${CONTENT_BUCKET}" \
-        "EmbeddingModelArn=arn:aws:bedrock:${AWS_REGION}::foundation-model/amazon.titan-embed-text-v2:0" \
-        "ChunkingStrategy=FIXED_SIZE" \
-        "MaxTokens=600" \
-        "OverlapPercentage=10" \
-        "CloudFormationBucket=${ARTIFACTS_BUCKET}"
+        "pKnowledgeBaseBucketName=${CONTENT_BUCKET}" \
+        "pEmbedModel=amazon.titan-embed-text-v2:0" \
+        "pChunkingStrategy=FIXED_SIZE" \
+        "pMaxTokens=600" \
+        "pOverlapPercentage=10" \
+        "pArtifactsBucket=${ARTIFACTS_BUCKET}"
 
     KB_ID=$(get_stack_output "sigma-${ENVIRONMENT}-knowledge-base" "KnowledgeBaseId")
     log_info "Knowledge Base ID: ${KB_ID}"
@@ -185,13 +185,14 @@ if [[ "$STACK_TARGET" == "all" || "$STACK_TARGET" == "base-rag" ]]; then
 
     deploy_stack "sigma-${ENVIRONMENT}-rag-solution" \
         "infrastructure/contact-center-RAG-solution.yaml" \
-        "LexBotName=sigma-${ENVIRONMENT}-bot" \
-        "ConversationTurns=4" \
-        "ConnectInstanceArn=${CONNECT_INSTANCE_ARN}" \
-        "ContactFlowName=Sigma POC Contact Flow" \
-        "KnowledgeBaseId=${KB_ID}" \
-        "KnowledgeBaseS3Bucket=${CONTENT_BUCKET}" \
-        "CloudFormationBucket=${ARTIFACTS_BUCKET}"
+        "pBotName=sigma-${ENVIRONMENT}-bot" \
+        "pConversationTurns=4" \
+        "pConnectInstanceARN=${CONNECT_INSTANCE_ARN}" \
+        "pContactFlowName=Sigma POC Contact Flow" \
+        "pKBID=${KB_ID}" \
+        "pKBS3Bucket=${CONTENT_BUCKET}" \
+        "pArtifactsBucket=${ARTIFACTS_BUCKET}" \
+        "pLexLocaleId=es_419"
 
     CONTACT_FLOW_ID=$(get_stack_output "sigma-${ENVIRONMENT}-rag-solution" "ContactFlowId")
     log_info "Contact Flow ID: ${CONTACT_FLOW_ID}"

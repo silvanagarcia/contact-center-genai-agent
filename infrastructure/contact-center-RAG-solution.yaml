@@ -67,6 +67,11 @@ Parameters:
     Type: String
     Description: The name (not the URL or ARN) of the S3 bucket where you staged the CloudFormation stack artifacts
 
+  pLexLocaleId:
+    Type: String
+    Description: The locale ID for the Lex bot (e.g. en_US, es_419, es_MX)
+    Default: en_US
+
 Metadata:
   AWS::CloudFormation::Interface:
     ParameterGroups:
@@ -397,7 +402,7 @@ Resources:
                   CodeHookInterfaceVersion: "1.0"
                   LambdaArn: !GetAtt BotHandler.Arn
               Enabled: true
-            LocaleId: "en_US"
+            LocaleId: !Ref pLexLocaleId
         ConversationLogSettings:
           'Fn::If':
             - EnableConversationLogsText
@@ -413,8 +418,8 @@ Resources:
           DetectSentiment: true
 
       BotLocales:
-        - LocaleId: "en_US"
-          Description: "US English language locale"
+        - LocaleId: !Ref pLexLocaleId
+          Description: !Sub "${pLexLocaleId} locale"
           NluConfidenceThreshold: 0.20
           VoiceSettings:
             VoiceId: "Matthew"
@@ -1665,7 +1670,7 @@ Resources:
     Properties:
       BotId: !Ref LexBot
       BotVersionLocaleSpecification:
-        - LocaleId: en_US
+        - LocaleId: !Ref pLexLocaleId
           BotVersionLocaleDetails:
             SourceBotVersion: DRAFT
       Description: Initial version
@@ -1677,7 +1682,7 @@ Resources:
       BotAliasName: qa-test-alias   # this is the name of the *bot* alias
       Description: Stable alias for team testing
       BotAliasLocaleSettings:
-        - LocaleId: en_US
+        - LocaleId: !Ref pLexLocaleId
           BotAliasLocaleSetting:
             Enabled: true
             CodeHookSpecification: 
