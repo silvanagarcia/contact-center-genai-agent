@@ -107,6 +107,9 @@ CONVERSATIONAL_AGENTS = {
     'Claude V3 Opus': AnthropicClaude3ConversationalAgent(
         AnthropicClaudeModel(bedrock_client, AnthropicClaudeModel.CLAUDE_V3_OPUS, 'Claude V3 Opus')
     ),
+    'Claude Haiku 4.5': AnthropicClaude3ConversationalAgent(
+        AnthropicClaudeModel(bedrock_client, AnthropicClaudeModel.CLAUDE_HAIKU_4_5, 'Claude Haiku 4.5')
+    ),
     'Cohere Command': ConversationalAgent(
         CohereCommandModel(bedrock_client, CohereCommandModel.COHERE_COMMAND, 'Cohere Command')
     ),
@@ -138,7 +141,7 @@ CONVERSATIONAL_AGENTS = {
         MistralAIModel(bedrock_client, MistralAIModel.MISTRAL_LARGE, 'Mistral Large')
     )
 }
-CONVERSATIONAL_AGENTS['Default'] = CONVERSATIONAL_AGENTS['Claude V3 Haiku']
+CONVERSATIONAL_AGENTS['Default'] = CONVERSATIONAL_AGENTS['Claude Haiku 4.5']
 
 # set default hyperparameters
 for agent in CONVERSATIONAL_AGENTS.values():

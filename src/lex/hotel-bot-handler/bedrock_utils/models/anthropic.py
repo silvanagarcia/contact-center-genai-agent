@@ -36,6 +36,8 @@ class AnthropicClaudeModel(BedrockModel):
     CLAUDE_V3_SONNET = 'anthropic.claude-3-sonnet-20240229-v1:0'
     CLAUDE_V3_5_SONNET = 'anthropic.claude-3-5-sonnet-20240620-v1:0'
     CLAUDE_V3_OPUS = 'anthropic.claude-3-opus-20240229-v1:0'
+    # Modelos activos — usar inference profile con prefijo us. para us-east-1
+    CLAUDE_HAIKU_4_5 = 'us.anthropic.claude-haiku-4-5-20251001-v1:0'
     MODEL_NAMES = {
         CLAUDE_V1_INSTANT: 'Anthropic Claude Instant V1.2',
         CLAUDE_V2: 'Anthropic Claude V2',
@@ -43,7 +45,8 @@ class AnthropicClaudeModel(BedrockModel):
         CLAUDE_V3_HAIKU: 'Anthropic Claude V3 Haiku',
         CLAUDE_V3_SONNET: 'Anthropic Claude V3 Sonnet',
         CLAUDE_V3_5_SONNET: 'Anthropic Claude V3.5 Sonnet',
-        CLAUDE_V3_OPUS: 'Anthropic Claude V3 Opus'
+        CLAUDE_V3_OPUS: 'Anthropic Claude V3 Opus',
+        CLAUDE_HAIKU_4_5: 'Anthropic Claude Haiku 4.5',
     }
     
     def __init__(
