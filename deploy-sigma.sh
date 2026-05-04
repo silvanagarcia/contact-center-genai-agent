@@ -95,7 +95,8 @@ publish_sigma_artifacts() {
             zip_file="/tmp/sigma-${lambda_dir}-handler.zip"
             (cd "$src_path" && zip -r "$zip_file" . -x "*.pyc" -x "__pycache__/*") > /dev/null
             aws s3 cp "$zip_file" "s3://${ARTIFACTS_BUCKET}/sigma/${lambda_dir}/handler.zip" \
-                --region "$AWS_REGION"
+                --region "$AWS_REGION" \
+                --profile sigma-poc
             log_success "  ${lambda_dir} publicado"
         fi
     done
@@ -122,6 +123,7 @@ deploy_stack() {
         --parameter-overrides $params_str \
         --capabilities CAPABILITY_NAMED_IAM \
         --region "$AWS_REGION" \
+        --profile sigma-poc \
         --no-fail-on-empty-changeset
 
     log_success "Stack ${stack_name} desplegado"
@@ -134,6 +136,7 @@ get_stack_output() {
     aws cloudformation describe-stacks \
         --stack-name "$stack_name" \
         --region "$AWS_REGION" \
+        --profile sigma-poc \
         --query "Stacks[0].Outputs[?OutputKey=='${output_key}'].OutputValue" \
         --output text 2>/dev/null || echo ""
 }
@@ -154,12 +157,23 @@ echo ""
 
 # 1. Publicar artefactos (siempre, excepto solo seed o content)
 if [[ "$STACK_TARGET" != "seed" && "$STACK_TARGET" != "content" ]]; then
-    log_info "Publicando artefactos en S3..."
-    # Artefactos del repo base (hotel-bot-handler = ahora sigma-bot-handler)
+    log_info "Construyendo artefactos Lambda..."
+    # Construir zips localmente en dist/
     if [[ -f "src/publish-all.sh" ]]; then
-        cd src && bash publish-all.sh "$ARTIFACTS_BUCKET" && cd ..
+        (cd src && bash publish-all.sh)
     fi
-    # Artefactos de Sigma
+
+    log_info "Subiendo artefactos Lambda a S3..."
+    # Subir los zips del repo base al bucket de artefactos
+    if [[ -d "dist" ]]; then
+        aws s3 sync dist/ "s3://${ARTIFACTS_BUCKET}/" \
+            --region "$AWS_REGION" \
+            --profile sigma-poc \
+            --exclude "*.DS_Store"
+        log_success "Artefactos base subidos a s3://${ARTIFACTS_BUCKET}/"
+    fi
+
+    # Artefactos de Sigma (auth, proactive-messages)
     publish_sigma_artifacts
 fi
 
@@ -263,7 +277,8 @@ if [[ "$STACK_TARGET" == "all" || "$STACK_TARGET" == "seed" ]]; then
     log_info "Cargando proveedores ficticios en DynamoDB..."
     python3 src/sigma/seed/seed_providers.py \
         --table "sigma-providers-${ENVIRONMENT}" \
-        --region "$AWS_REGION"
+        --region "$AWS_REGION" \
+        --profile sigma-poc
     log_success "Seed completado"
 fi
 
@@ -272,6 +287,7 @@ if [[ "$STACK_TARGET" == "all" || "$STACK_TARGET" == "content" ]]; then
     log_info "Subiendo contenido de FAQs y catalogo a S3..."
     aws s3 sync content/sigma/ "s3://${CONTENT_BUCKET}/sigma/" \
         --region "$AWS_REGION" \
+        --profile sigma-poc \
         --delete
     log_success "Contenido subido a s3://${CONTENT_BUCKET}/sigma/"
     log_warning "ACCION MANUAL: Sincronizar la Knowledge Base en Bedrock Console:"
