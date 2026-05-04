@@ -26,7 +26,7 @@ logger.setLevel(logging.DEBUG)
 
 MAX_CONVERSATION_TURNS = int(os.environ.get('CONVERSATION_TURNS', '4'))
 SQS_QUEUE_URL = os.environ.get('SQS_QUEUE_URL')
-ANY_HOTEL = 'Any'
+ANY_CATEGORY = 'Any'
 
 def lambda_handler(event, context):
     requestAttributes = event.get("requestAttributes", {})
@@ -53,19 +53,9 @@ def lambda_handler(event, context):
     else:
         input_transcript = event.get('inputTranscript')
         
-        # determine if a brand filter is needed for the Knowledge Base query
-        # first, check for existing session attribute
-        brand = sessionAttributes.get('brand')
-
-        # if there is a brand slot value accompanying the input_transcript, 
-        # use the slot and substitute the interpreted value in the input_transcript
-        if (slot_data := slot_values.get('brand')):
-            if (brand := slot_data['value'].get('interpretedValue')):
-                sessionAttributes['brand'] = brand
-            if (original_value := slot_data['value'].get('originalValue')):
-                if brand:
-                    if brand != ANY_HOTEL:
-                        input_transcript = input_transcript.replace(original_value, brand)
+        # determine the KB folder filter based on the intent (Sigma content categories)
+        # intent_name maps to a subfolder in the S3 Knowledge Base bucket
+        category = INTENT_CATEGORY_MAP.get(intent_name, '')
 
         # retrieve conversation turns, if any
         conversation = ''
@@ -104,14 +94,15 @@ def lambda_handler(event, context):
         knowledge_base = sessionAttributes.get('knowledgeBase', 'Default')
         bedrock_kb = bedrock_helpers.select_knowledge_base(knowledge_base)
 
-        # set the query filter - in this case, based on the S3 folder structure
+        # set the query filter based on S3 folder structure for Sigma content
         if bedrock_kb.s3_bucket is not None and len(bedrock_kb.s3_bucket) > 0:
+            folder_prefix = get_category_filter(category)
             query_filter = {
                 'startsWith': {
                     'key': 'x-amz-bedrock-kb-source-uri',
-                    'value': 's3://' + bedrock_kb.s3_bucket + get_brand_filter(brand)
+                    'value': 's3://' + bedrock_kb.s3_bucket + folder_prefix
                 }
-            }            
+            }
             bedrock_kb.metadata_filter = query_filter
             logger.debug(f'KB s3_bucket = {bedrock_kb.s3_bucket}')
 
@@ -149,7 +140,7 @@ def lambda_handler(event, context):
             turns.pop(0)
         sessionAttributes['conversation'] = json.dumps(turns)
         logger.debug(f'END CONVERSATION = {json.dumps(turns, indent=4)}')
-        
+
         # capture session attributes for analytics
         sessionAttributes['knowledge_base'] = bedrock_kb.kb_id
         sessionAttributes['retrieval_latency'] = retrieval_time
@@ -188,39 +179,27 @@ def lambda_handler(event, context):
     return response
 
 
-BRAND_FILTERS = {
-    'Example Corp Seaside Resorts': '/seaside-resorts',
-    'Example Corp Luxury Suites':   '/luxury-suites',
-    'Example corp Waypoint Inns':   '/waypoint-inns',
-    'Example Corp Family Getaways': '/family-getaways',
-    'Example Corp Party Times':     '/party-times',
+# Sigma: mapa de intent → subcarpeta en S3 para filtrar la Knowledge Base
+# Permite que cada intent consulte solo el contenido relevante
+INTENT_CATEGORY_MAP = {
+    'ConsultaGeneral':      'faqs',        # todas las FAQs
+    'ConsultaPedidos':      'faqs/pedidos',
+    'ConsultaEntregas':     'faqs/entregas',
+    'ConsultaCatalogo':     'catalogo',
+    'ConsultaCreditoPagos': 'faqs/credito-pagos',
+    # FallbackIntent no tiene filtro: busca en todo el contenido
 }
 
-def get_brand_filter(brand_name):
-    if not brand_name:
+def get_category_filter(category):
+    """Devuelve el prefijo de carpeta S3 para filtrar la KB según el intent."""
+    if not category:
         return ''
-    elif brand_name not in BRAND_FILTERS:
-        return ''
-    else:
-        return BRAND_FILTERS[brand_name]
-
+    return '/' + category
 
 def single_brand_mentioned(conversation):
-    brand_mentioned = None
-    brand_count = 0
-    for brand in BRAND_FILTERS.keys():
-        if brand.lower() in conversation.lower():
-            brand_mentioned = brand
-            brand_count += 1
-    
-    if brand_count == 1:
-        return brand_mentioned
-    else:
-        return None
+    """Mantenido por compatibilidad — no aplica en Sigma (sin filtro por marca)."""
+    return None
 
-# example: reformat acronyms, years, etc., for speech
-SPEECH_CONVERSIONS = {
-    "EV": "E V",
-    "2024": "twenty twenty four"
-}
+# Conversiones para texto (WhatsApp es canal de texto, no voz)
+SPEECH_CONVERSIONS = {}  # No aplica para WhatsApp
 

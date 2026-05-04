@@ -1,0 +1,172 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Sigma Foodservice POC - Base de datos de proveedores (mock de Snowflake).
+  Crea las tablas DynamoDB que simulan los datos que en produccion vendrian de Snowflake:
+  proveedores, historial de contacto proactivo y sesiones de autenticacion.
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: poc
+    AllowedValues: [poc, dev, staging, prod]
+    Description: Ambiente de despliegue
+
+  ProviderTableName:
+    Type: String
+    Default: sigma-providers
+    Description: Nombre de la tabla principal de proveedores
+
+  ProactiveLogTableName:
+    Type: String
+    Default: sigma-proactive-log
+    Description: Nombre de la tabla de log de mensajes proactivos enviados
+
+  SessionTableName:
+    Type: String
+    Default: sigma-sessions
+    Description: Nombre de la tabla de sesiones de autenticacion
+
+Resources:
+
+  # ─── Tabla principal de proveedores (mock Snowflake) ───────────────────────
+  # En produccion esta data vendria de Snowflake via COPY INTO S3 + ingesta
+  SigmaProvidersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${ProviderTableName}-${EnvironmentName}'
+      BillingMode: PAY_PER_REQUEST
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+      AttributeDefinitions:
+        - AttributeName: providerId
+          AttributeType: S
+        - AttributeName: phone
+          AttributeType: S
+        - AttributeName: sucursal
+          AttributeType: S
+        - AttributeName: creditStatus
+          AttributeType: S
+      KeySchema:
+        - AttributeName: providerId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        # GSI para lookup por telefono (autenticacion en Connect Contact Flow)
+        - IndexName: phone-index
+          KeySchema:
+            - AttributeName: phone
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        # GSI para filtrar por sucursal + estado de credito (mensajes proactivos)
+        - IndexName: sucursal-creditStatus-index
+          KeySchema:
+            - AttributeName: sucursal
+              KeyType: HASH
+            - AttributeName: creditStatus
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      Tags:
+        - Key: Project
+          Value: sigma-agente-ia
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: DataSource
+          Value: mock-snowflake
+
+  # ─── Tabla de log de mensajes proactivos ────────────────────────────────────
+  # Registra cada mensaje proactivo enviado para controlar reintentos y evitar spam
+  SigmaProactiveLogTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${ProactiveLogTableName}-${EnvironmentName}'
+      BillingMode: PAY_PER_REQUEST
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      SSESpecification:
+        SSEEnabled: true
+      AttributeDefinitions:
+        - AttributeName: providerId
+          AttributeType: S
+        - AttributeName: campaignDate
+          AttributeType: S
+      KeySchema:
+        - AttributeName: providerId
+          KeyType: HASH
+        - AttributeName: campaignDate
+          KeyType: RANGE
+      Tags:
+        - Key: Project
+          Value: sigma-agente-ia
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  # ─── Tabla de sesiones de autenticacion ─────────────────────────────────────
+  # Guarda el mapping telefono <-> proveedor autenticado para la duracion de la sesion
+  SigmaSessionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${SessionTableName}-${EnvironmentName}'
+      BillingMode: PAY_PER_REQUEST
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      SSESpecification:
+        SSEEnabled: true
+      AttributeDefinitions:
+        - AttributeName: contactId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: contactId
+          KeyType: HASH
+      Tags:
+        - Key: Project
+          Value: sigma-agente-ia
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+Outputs:
+  ProvidersTableName:
+    Description: Nombre de la tabla de proveedores
+    Value: !Ref SigmaProvidersTable
+    Export:
+      Name: !Sub 'sigma-${EnvironmentName}-providers-table-name'
+
+  ProvidersTableArn:
+    Description: ARN de la tabla de proveedores
+    Value: !GetAtt SigmaProvidersTable.Arn
+    Export:
+      Name: !Sub 'sigma-${EnvironmentName}-providers-table-arn'
+
+  ProvidersPhoneIndex:
+    Description: Nombre del GSI de telefono para autenticacion
+    Value: phone-index
+    Export:
+      Name: !Sub 'sigma-${EnvironmentName}-providers-phone-index'
+
+  ProactiveLogTableName:
+    Description: Nombre de la tabla de log de proactivos
+    Value: !Ref SigmaProactiveLogTable
+    Export:
+      Name: !Sub 'sigma-${EnvironmentName}-proactive-log-table-name'
+
+  ProactiveLogTableArn:
+    Description: ARN de la tabla de log de proactivos
+    Value: !GetAtt SigmaProactiveLogTable.Arn
+    Export:
+      Name: !Sub 'sigma-${EnvironmentName}-proactive-log-table-arn'
+
+  SessionsTableName:
+    Description: Nombre de la tabla de sesiones
+    Value: !Ref SigmaSessionsTable
+    Export:
+      Name: !Sub 'sigma-${EnvironmentName}-sessions-table-name'
+
+  SessionsTableArn:
+    Description: ARN de la tabla de sesiones
+    Value: !GetAtt SigmaSessionsTable.Arn
+    Export:
+      Name: !Sub 'sigma-${EnvironmentName}-sessions-table-arn'

@@ -33,27 +33,27 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 HANDLERS = {
-    'Accommodations':          {'handler': TopicIntentHandler.lambda_handler},
-    'Amenities':               {'handler': TopicIntentHandler.lambda_handler},
-    'BrandPortfolio':          {'handler': TopicIntentHandler.lambda_handler},
-    'CorporateLoyaltyProgram': {'handler': TopicIntentHandler.lambda_handler},
-    'CorporateOverview':       {'handler': TopicIntentHandler.lambda_handler},
-    'CorporateSustainability': {'handler': TopicIntentHandler.lambda_handler},
-    'Locations':               {'handler': TopicIntentHandler.lambda_handler},
-    'Parking':                 {'handler': TopicIntentHandler.lambda_handler},
-    'Policies':                {'handler': TopicIntentHandler.lambda_handler},
-    'Services':                {'handler': TopicIntentHandler.lambda_handler},
-    'SwitchBrand':             {'handler': TopicIntentHandler.lambda_handler},
-    'Welcome':                 {'handler': TopicIntentHandler.lambda_handler},
+    # --- Sigma Foodservice intents ---
+    # Consultas generales: FAQs, horarios, contacto
+    'ConsultaGeneral':         {'handler': TopicIntentHandler.lambda_handler},
+    # Pedidos: cómo pedir, modificar, cancelar
+    'ConsultaPedidos':         {'handler': TopicIntentHandler.lambda_handler},
+    # Entregas: tiempos, seguimiento, incidencias
+    'ConsultaEntregas':        {'handler': TopicIntentHandler.lambda_handler},
+    # Catálogo: productos, fichas técnicas, disponibilidad
+    'ConsultaCatalogo':        {'handler': TopicIntentHandler.lambda_handler},
+    # Crédito y pagos: bloqueos, saldos, métodos de pago
+    'ConsultaCreditoPagos':    {'handler': TopicIntentHandler.lambda_handler},
 
+    # --- Intents de control de conversación ---
+    # Todo lo que no matchea un intent específico va a RAG
     'FallbackIntent':          {'handler': FallbackIntent.lambda_handler},
-
-    'Booking':                 {'handler': SpeakToAgent.lambda_handler},
+    # Escalamiento explícito a agente humano del CAP
     'SpeakToAgent':            {'handler': SpeakToAgent.lambda_handler},
-
     'Help':                    {'handler': Help.lambda_handler},
     'Goodbye':                 {'handler': Goodbye.lambda_handler},
 
+    # --- Intents de testing (mantener para POC) ---
     'SelectLLM':               {'handler': SelectLLM.lambda_handler},
     'SelectKnowledgeBase':     {'handler': SelectKnowledgeBase.lambda_handler},
     'ToggleLLMContext':        {'handler': ToggleLLMContext.lambda_handler},

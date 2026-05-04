@@ -1,0 +1,100 @@
+{
+  "_description": "Parametros para el despliegue de la POC de Sigma Foodservice. Completar los valores marcados con COMPLETAR antes de ejecutar deploy-sigma.sh",
+
+  "global": {
+    "EnvironmentName":    "poc",
+    "AWSRegion":          "us-east-1",
+    "ArtifactsBucket":    "COMPLETAR - nombre del bucket S3 para artefactos CloudFormation y Lambda",
+    "ConnectInstanceArn": "COMPLETAR - ARN de la instancia de Amazon Connect (ej: arn:aws:connect:us-east-1:123456789012:instance/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)"
+  },
+
+  "stack_1_knowledge_base": {
+    "StackName":          "sigma-poc-knowledge-base",
+    "Template":           "infrastructure/bedrock-KB.yaml",
+    "Parameters": {
+      "KnowledgeBaseName":       "sigma-poc-kb",
+      "EmbeddingModelArn":       "arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-embed-text-v2:0",
+      "ChunkingStrategy":        "FIXED_SIZE",
+      "MaxTokens":               "600",
+      "OverlapPercentage":       "10",
+      "S3BucketName":            "COMPLETAR - nombre del bucket S3 donde se cargara el contenido de FAQs y catalogo",
+      "CloudFormationBucket":    "COMPLETAR - mismo que ArtifactsBucket"
+    }
+  },
+
+  "stack_2_rag_solution": {
+    "StackName":          "sigma-poc-rag-solution",
+    "Template":           "infrastructure/contact-center-RAG-solution.yaml",
+    "Parameters": {
+      "LexBotName":              "sigma-poc-bot",
+      "ConversationTurns":       "4",
+      "ConnectInstanceArn":      "COMPLETAR",
+      "ContactFlowName":         "Sigma POC Contact Flow",
+      "KnowledgeBaseId":         "COMPLETAR - se obtiene del output del stack 1",
+      "KnowledgeBaseS3Bucket":   "COMPLETAR - mismo bucket de contenido del stack 1",
+      "LexLocaleName":           "es_419",
+      "CloudFormationBucket":    "COMPLETAR - mismo que ArtifactsBucket"
+    }
+  },
+
+  "stack_sigma_db": {
+    "StackName":          "sigma-poc-providers-db",
+    "Template":           "infrastructure/sigma/sigma-providers-db.yaml",
+    "Parameters": {
+      "EnvironmentName":         "poc",
+      "ProviderTableName":       "sigma-providers",
+      "ProactiveLogTableName":   "sigma-proactive-log",
+      "SessionTableName":        "sigma-sessions"
+    }
+  },
+
+  "stack_sigma_auth": {
+    "StackName":          "sigma-poc-customer-auth",
+    "Template":           "infrastructure/sigma/sigma-customer-auth.yaml",
+    "Parameters": {
+      "EnvironmentName":         "poc",
+      "ProvidersTableName":      "sigma-providers-poc",
+      "SessionsTableName":       "sigma-sessions-poc",
+      "ArtifactsBucket":         "COMPLETAR"
+    }
+  },
+
+  "stack_sigma_proactive": {
+    "StackName":          "sigma-poc-proactive-messages",
+    "Template":           "infrastructure/sigma/sigma-proactive-messages.yaml",
+    "Parameters": {
+      "EnvironmentName":         "poc",
+      "ProvidersTableName":      "sigma-providers-poc",
+      "ProactiveLogTableName":   "sigma-proactive-log-poc",
+      "ConnectInstanceArn":      "COMPLETAR",
+      "RecordatorioCampaignId":  "PENDING - completar despues de crear campana en consola",
+      "BloqueoCampaignId":       "PENDING - completar despues de crear campana en consola",
+      "ArtifactsBucket":         "COMPLETAR",
+      "DaysSinceLastOrderThreshold": "14",
+      "MaxDailyMessagesPerProvider": "1"
+    }
+  },
+
+  "stack_sigma_whatsapp": {
+    "StackName":          "sigma-poc-whatsapp",
+    "Template":           "infrastructure/sigma/sigma-whatsapp.yaml",
+    "Parameters": {
+      "EnvironmentName":         "poc",
+      "ConnectInstanceArn":      "COMPLETAR",
+      "ConnectContactFlowId":    "COMPLETAR - se obtiene del output del stack RAG Solution",
+      "WhatsAppPhoneNumberId":   "PENDING_EMBEDDED_SIGNUP - completar despues del embedded sign-up con Meta",
+      "WhatsAppWABAId":          "PENDING_EMBEDDED_SIGNUP - completar despues del embedded sign-up con Meta"
+    }
+  },
+
+  "seed": {
+    "ProvidersTable":  "sigma-providers-poc",
+    "Region":          "us-east-1",
+    "Command":         "python3 src/sigma/seed/seed_providers.py --table sigma-providers-poc --region us-east-1"
+  },
+
+  "content_upload": {
+    "Description": "Subir contenido de FAQs y catalogo al bucket de la Knowledge Base",
+    "Command":      "aws s3 sync content/sigma/ s3://COMPLETAR/sigma/ --region us-east-1"
+  }
+}

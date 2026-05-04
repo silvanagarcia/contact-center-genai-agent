@@ -1,0 +1,240 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Sigma Foodservice POC - Mensajes proactivos outbound via WhatsApp.
+  Despliega la Lambda que consulta DynamoDB (mock Snowflake), aplica los filtros
+  de elegibilidad y dispara mensajes proactivos via Amazon Connect Outbound Campaigns.
+  Tipos: (A) Recordatorio de pedido por frecuencia de compra, (B) Aviso de bloqueo por credito.
+  Politica de reintentos: max 2 reintentos, 24-48h entre intentos, solo horario habil.
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: poc
+    AllowedValues: [poc, dev, staging, prod]
+
+  ProvidersTableName:
+    Type: String
+    Description: Nombre de la tabla DynamoDB de proveedores
+    Default: sigma-providers-poc
+
+  ProactiveLogTableName:
+    Type: String
+    Description: Nombre de la tabla de log de proactivos
+    Default: sigma-proactive-log-poc
+
+  ConnectInstanceArn:
+    Type: String
+    Description: ARN de la instancia de Amazon Connect
+
+  # En POC estos IDs se completan despues de crear las campanas manualmente en la consola
+  RecordatorioCampaignId:
+    Type: String
+    Description: ID de la campana de Outbound de recordatorio de pedido (se obtiene post-deploy)
+    Default: PENDING
+
+  BloqueoCampaignId:
+    Type: String
+    Description: ID de la campana de Outbound de aviso de bloqueo (se obtiene post-deploy)
+    Default: PENDING
+
+  ArtifactsBucket:
+    Type: String
+    Description: Bucket S3 donde se publican los artefactos Lambda
+
+  # Horario de envio (zona horaria America/Mexico_City)
+  SendWindowStart:
+    Type: String
+    Default: '08'
+    Description: Hora inicio de ventana de envio (hora local Mexico City, formato HH)
+
+  SendWindowEnd:
+    Type: String
+    Default: '17'
+    Description: Hora fin de ventana de envio (hora local Mexico City, formato HH)
+
+  # Umbrales de elegibilidad
+  DaysSinceLastOrderThreshold:
+    Type: Number
+    Default: 14
+    Description: Dias sin pedido para disparar recordatorio de frecuencia
+
+  MaxDailyMessagesPerProvider:
+    Type: Number
+    Default: 1
+    Description: Maximo de mensajes proactivos por proveedor por dia
+
+Resources:
+
+  # ─── IAM Role para la Lambda de proactivos ───────────────────────────────────
+  SigmaProactiveLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'sigma-proactive-lambda-role-${EnvironmentName}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: sigma-proactive-policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # Leer proveedores
+              - Effect: Allow
+                Action:
+                  - dynamodb:Scan
+                  - dynamodb:Query
+                  - dynamodb:GetItem
+                Resource:
+                  - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProvidersTableName}'
+                  - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProvidersTableName}/index/*'
+              # Leer y escribir log de proactivos (control de reintentos)
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:Query
+                Resource:
+                  - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProactiveLogTableName}'
+              # Disparar campanas de outbound en Connect
+              - Effect: Allow
+                Action:
+                  - connect-campaigns:PutDialRequestBatch
+                  - connect:PutContactInformation
+                Resource: '*'
+              # Social Messaging para envio directo de WhatsApp en POC
+              - Effect: Allow
+                Action:
+                  - social-messaging:SendWhatsAppMessage
+                Resource: '*'
+      Tags:
+        - Key: Project
+          Value: sigma-agente-ia
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  # ─── Lambda de mensajes proactivos ───────────────────────────────────────────
+  SigmaProactiveLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'sigma-proactive-handler-${EnvironmentName}'
+      Description: >
+        Escanea DynamoDB para identificar proveedores elegibles para mensajes proactivos
+        (recordatorio de pedido o aviso de bloqueo) y los envia via Connect Outbound Campaigns.
+      Runtime: python3.12
+      Handler: handler.lambda_handler
+      Role: !GetAtt SigmaProactiveLambdaRole.Arn
+      Timeout: 300
+      MemorySize: 512
+      Code:
+        S3Bucket: !Ref ArtifactsBucket
+        S3Key: sigma/proactive-messages/handler.zip
+      Environment:
+        Variables:
+          PROVIDERS_TABLE: !Ref ProvidersTableName
+          PROACTIVE_LOG_TABLE: !Ref ProactiveLogTableName
+          CONNECT_INSTANCE_ARN: !Ref ConnectInstanceArn
+          RECORDATORIO_CAMPAIGN_ID: !Ref RecordatorioCampaignId
+          BLOQUEO_CAMPAIGN_ID: !Ref BloqueoCampaignId
+          DAYS_THRESHOLD: !Sub '${DaysSinceLastOrderThreshold}'
+          MAX_DAILY_MESSAGES: !Sub '${MaxDailyMessagesPerProvider}'
+          SEND_WINDOW_START: !Ref SendWindowStart
+          SEND_WINDOW_END: !Ref SendWindowEnd
+          TIMEZONE: America/Mexico_City
+          LOG_LEVEL: INFO
+      Tags:
+        - Key: Project
+          Value: sigma-agente-ia
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  # ─── Log group para la Lambda ────────────────────────────────────────────────
+  SigmaProactiveLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/sigma-proactive-handler-${EnvironmentName}'
+      RetentionInDays: 30
+
+  # ─── EventBridge Rule - ejecucion diaria en horario habil ────────────────────
+  # Lunes a viernes a las 08:00 AM Mexico City = 13:00 UTC (sin horario de verano)
+  # En horario de verano Mexico City = UTC-5 => 13:00 UTC
+  SigmaProactiveScheduleRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub 'sigma-proactive-daily-${EnvironmentName}'
+      Description: Dispara el proceso de mensajes proactivos de lunes a viernes a las 8am hora Mexico
+      ScheduleExpression: 'cron(0 13 ? * MON-FRI *)'
+      State: ENABLED
+      Targets:
+        - Id: SigmaProactiveLambdaTarget
+          Arn: !GetAtt SigmaProactiveLambda.Arn
+
+  # ─── Permiso para que EventBridge invoque la Lambda ──────────────────────────
+  SigmaProactiveLambdaEventPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt SigmaProactiveLambda.Arn
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt SigmaProactiveScheduleRule.Arn
+
+  # ─── SQS Dead Letter Queue para mensajes fallidos ────────────────────────────
+  SigmaProactiveDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'sigma-proactive-dlq-${EnvironmentName}'
+      MessageRetentionPeriod: 1209600  # 14 dias
+      Tags:
+        - Key: Project
+          Value: sigma-agente-ia
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  # ─── CloudWatch Alarm para errores de Lambda ─────────────────────────────────
+  SigmaProactiveLambdaErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'sigma-proactive-errors-${EnvironmentName}'
+      AlarmDescription: Errores en la Lambda de mensajes proactivos de Sigma
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref SigmaProactiveLambda
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+Outputs:
+  ProactiveLambdaArn:
+    Description: ARN de la Lambda de mensajes proactivos
+    Value: !GetAtt SigmaProactiveLambda.Arn
+    Export:
+      Name: !Sub 'sigma-${EnvironmentName}-proactive-lambda-arn'
+
+  ProactiveScheduleRuleArn:
+    Description: ARN de la regla EventBridge (disparo diario a las 8am)
+    Value: !GetAtt SigmaProactiveScheduleRule.Arn
+
+  ProactiveDLQUrl:
+    Description: URL de la DLQ para mensajes proactivos fallidos
+    Value: !Ref SigmaProactiveDLQ
+
+  NextSteps:
+    Description: Pasos manuales post-deploy
+    Value: >
+      1) Crear dos campanas de WhatsApp Outbound en la consola de Connect:
+         - Recordatorio de pedido (template utility aprobado por Meta)
+         - Aviso de bloqueo (template utility aprobado por Meta)
+      2) Actualizar los parametros RecordatorioCampaignId y BloqueoCampaignId
+         con los IDs obtenidos y re-desplegar este stack.
+      3) Verificar que la Lambda tiene conectividad con los endpoints de Connect.

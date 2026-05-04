@@ -1,0 +1,154 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Sigma Foodservice POC - Integracion WhatsApp via AWS End User Messaging Social.
+
+  PREREQUISITO MANUAL (hacer ANTES de desplegar este stack):
+  El administrador de la Meta Business Account de Sigma debe completar el
+  "Embedded Sign-Up" de WhatsApp en la consola de AWS:
+    AWS Console -> Amazon Connect -> Phone numbers -> Claim a number -> WhatsApp
+    O bien: AWS End User Messaging Social -> Get started -> WhatsApp
+
+  Pasos del Embedded Sign-Up:
+    1. Iniciar sesion con las credenciales de Facebook/Meta del admin de Sigma
+    2. Seleccionar o crear la WhatsApp Business Account (WABA)
+    3. Registrar el numero de telefono (nuevo, no el productivo)
+    4. Verificar el numero con OTP (SMS o llamada)
+    5. Copiar el PhoneNumberId y el WABAId que genera el proceso
+
+  Una vez completado el Embedded Sign-Up, se obtienen los valores para
+  los parametros WhatsAppPhoneNumberId y WhatsAppWABAId de este stack.
+
+  PARA LA POC: mientras se gestiona el Embedded Sign-Up con Meta,
+  usar el Web Chat Widget de Connect (mismo Contact Flow, cero dependencia de Meta).
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: poc
+    AllowedValues: [poc, dev, staging, prod]
+
+  ConnectInstanceArn:
+    Type: String
+    Description: ARN de la instancia de Amazon Connect
+
+  ConnectContactFlowId:
+    Type: String
+    Description: ID del Contact Flow de Sigma (creado por el stack del repo base)
+
+  WhatsAppPhoneNumberId:
+    Type: String
+    Description: >
+      Phone Number ID de WhatsApp Business (se obtiene del Embedded Sign-Up en la consola de AWS).
+      Ejemplo: 1234567890123456
+    Default: PENDING_EMBEDDED_SIGNUP
+
+  WhatsAppWABAId:
+    Type: String
+    Description: >
+      WhatsApp Business Account ID (se obtiene del Embedded Sign-Up en la consola de AWS).
+      Ejemplo: 1234567890123456
+    Default: PENDING_EMBEDDED_SIGNUP
+
+Conditions:
+  # Solo crear los recursos de WhatsApp si el Embedded Sign-Up fue completado
+  WhatsAppReady: !And
+    - !Not [!Equals [!Ref WhatsAppPhoneNumberId, PENDING_EMBEDDED_SIGNUP]]
+    - !Not [!Equals [!Ref WhatsAppWABAId, PENDING_EMBEDDED_SIGNUP]]
+
+Resources:
+
+  # ─── Web Chat Widget (disponible inmediatamente, sin Meta) ───────────────────
+  # El Web Chat Widget usa el mismo Contact Flow que WhatsApp.
+  # Permite probar el bot en el navegador sin depender del proceso de Meta.
+  # Deploy este recurso siempre, independientemente del estado de WhatsApp.
+  SigmaWebChatSecurityKey:
+    Type: AWS::Connect::SecurityKey
+    Properties:
+      InstanceId: !Ref ConnectInstanceArn
+      Key: !Sub |
+        # Clave generada automaticamente para el Web Chat Widget de Sigma POC
+        # Reemplazar con una clave RSA real en produccion
+        MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1234567890
+
+  # ─── Asociacion del numero de WhatsApp con Connect (solo si ready) ───────────
+  # Este recurso se crea solo cuando el Embedded Sign-Up fue completado
+  # y se tienen los IDs de WhatsApp Business.
+  SigmaWhatsAppNumberAssociation:
+    Type: AWS::Connect::PhoneNumber
+    Condition: WhatsAppReady
+    Properties:
+      TargetArn: !Ref ConnectInstanceArn
+      Description: !Sub 'Numero WhatsApp Sigma Foodservice - ${EnvironmentName}'
+      Type: TOLL_FREE
+      Tags:
+        - Key: Project
+          Value: sigma-agente-ia
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Channel
+          Value: WhatsApp
+
+  # ─── CloudWatch Dashboard para monitoreo de WhatsApp ────────────────────────
+  SigmaWhatsAppDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub 'sigma-whatsapp-${EnvironmentName}'
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "text",
+              "x": 0, "y": 0, "width": 24, "height": 3,
+              "properties": {
+                "markdown": "# Sigma Foodservice - Monitoreo WhatsApp POC\n\n**Canal activo:** ${WhatsAppPhoneNumberId}\n\n**Estado:** Verificar en la consola de Connect -> Phone numbers"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0, "y": 3, "width": 12, "height": 6,
+              "properties": {
+                "title": "Contactos entrantes (inbound WhatsApp)",
+                "metrics": [
+                  ["AWS/Connect", "ContactsHandled", "InstanceId", "${ConnectInstanceArn}", "Channel", "CHAT"]
+                ],
+                "period": 3600,
+                "stat": "Sum",
+                "view": "timeSeries"
+              }
+            }
+          ]
+        }
+
+Outputs:
+  WebChatSetupInstructions:
+    Description: Instrucciones para configurar el Web Chat Widget (canal de prueba inmediato)
+    Value: !Sub >
+      Para generar el snippet del Web Chat Widget:
+      1. Ir a la consola de Amazon Connect
+      2. Seleccionar la instancia de Connect
+      3. En el menu izquierdo: Canales -> Chat
+      4. Crear widget -> Nombre: "Sigma POC Widget"
+      5. Seleccionar Contact Flow: el creado por el stack RAG Solution
+      6. Copiar el snippet de JavaScript
+      7. Pegar el snippet en cualquier pagina HTML para probar el bot
+
+  WhatsAppSetupStatus:
+    Description: Estado de la integracion WhatsApp
+    Value: !If
+      - WhatsAppReady
+      - !Sub 'WhatsApp configurado - Phone Number ID: ${WhatsAppPhoneNumberId}'
+      - >
+        WhatsApp PENDIENTE - Completar el Embedded Sign-Up en la consola de AWS
+        (Amazon Connect -> Canales -> WhatsApp) y re-desplegar este stack con los IDs obtenidos.
+
+  WhatsAppTemplatesNextSteps:
+    Description: Pasos para templates de WhatsApp (mensajes proactivos)
+    Value: >
+      Templates necesarios para los mensajes proactivos (tipo utility):
+      1. Recordatorio de pedido:
+         Hola {{1}}, notamos que no has realizado tu pedido habitual.
+         Te ayudamos con eso? Responde Si para continuar.
+      2. Aviso de bloqueo:
+         Hola {{1}}, tu cuenta tiene un bloqueo activo.
+         Para mas informacion, responde a este mensaje o contacta a tu asesor.
+      Someter a Meta para aprobacion desde: developers.facebook.com -> Tu app -> WhatsApp -> Message Templates

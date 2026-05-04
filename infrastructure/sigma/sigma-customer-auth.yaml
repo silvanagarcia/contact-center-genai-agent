@@ -1,0 +1,132 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Sigma Foodservice POC - Lambda de autenticacion de proveedores.
+  Esta Lambda es invocada desde el Amazon Connect Contact Flow para identificar
+  al proveedor por su numero de telefono (E.164) consultando DynamoDB.
+  En produccion el lookup se haria contra Customer Profiles de Connect,
+  que a su vez se alimenta de Snowflake. En la POC consultamos DynamoDB directamente.
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: poc
+    AllowedValues: [poc, dev, staging, prod]
+
+  ProvidersTableName:
+    Type: String
+    Description: Nombre de la tabla DynamoDB de proveedores
+    Default: sigma-providers-poc
+
+  SessionsTableName:
+    Type: String
+    Description: Nombre de la tabla DynamoDB de sesiones
+    Default: sigma-sessions-poc
+
+  ArtifactsBucket:
+    Type: String
+    Description: Bucket S3 donde se publican los artefactos Lambda
+
+Resources:
+
+  # ─── IAM Role para la Lambda de autenticacion ───────────────────────────────
+  SigmaAuthLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'sigma-auth-lambda-role-${EnvironmentName}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: sigma-auth-dynamodb-policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # Leer tabla de proveedores (incluye GSI de telefono)
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:Query
+                Resource:
+                  - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProvidersTableName}'
+                  - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProvidersTableName}/index/*'
+              # Leer y escribir sesiones activas
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                Resource:
+                  - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${SessionsTableName}'
+      Tags:
+        - Key: Project
+          Value: sigma-agente-ia
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  # ─── Lambda de autenticacion ─────────────────────────────────────────────────
+  # Invocada por Connect Contact Flow antes de llegar al bot de Lex
+  SigmaAuthLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'sigma-auth-handler-${EnvironmentName}'
+      Description: >
+        Autentica al proveedor buscando su numero de telefono en DynamoDB.
+        Retorna los datos del proveedor como Contact Attributes de Connect.
+      Runtime: python3.12
+      Handler: handler.lambda_handler
+      Role: !GetAtt SigmaAuthLambdaRole.Arn
+      Timeout: 10
+      MemorySize: 256
+      Code:
+        S3Bucket: !Ref ArtifactsBucket
+        S3Key: sigma/auth/handler.zip
+      Environment:
+        Variables:
+          PROVIDERS_TABLE: !Ref ProvidersTableName
+          SESSIONS_TABLE: !Ref SessionsTableName
+          PHONE_GSI: phone-index
+          LOG_LEVEL: INFO
+      Tags:
+        - Key: Project
+          Value: sigma-agente-ia
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  # ─── Permiso para que Connect invoque la Lambda ──────────────────────────────
+  SigmaAuthLambdaConnectPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt SigmaAuthLambda.Arn
+      Action: lambda:InvokeFunction
+      Principal: connect.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+
+  # ─── Log group para la Lambda ────────────────────────────────────────────────
+  SigmaAuthLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/sigma-auth-handler-${EnvironmentName}'
+      RetentionInDays: 30
+
+Outputs:
+  AuthLambdaArn:
+    Description: ARN de la Lambda de autenticacion (agregar al Contact Flow de Connect)
+    Value: !GetAtt SigmaAuthLambda.Arn
+    Export:
+      Name: !Sub 'sigma-${EnvironmentName}-auth-lambda-arn'
+
+  AuthLambdaName:
+    Description: Nombre de la Lambda de autenticacion
+    Value: !Ref SigmaAuthLambda
+    Export:
+      Name: !Sub 'sigma-${EnvironmentName}-auth-lambda-name'
+
+  AuthLambdaRoleArn:
+    Description: ARN del rol IAM de la Lambda de autenticacion
+    Value: !GetAtt SigmaAuthLambdaRole.Arn
