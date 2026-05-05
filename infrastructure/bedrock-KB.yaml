@@ -507,8 +507,8 @@ Resources:
           InclusionPrefixes:
             Fn::If:
               - HasInputDocumentUploadFolderPrefix
-              - Ref: pInputDocumentUploadFolderPrefix
-              - Ref: AWS::NoValue
+              - - !Ref pInputDocumentUploadFolderPrefix
+              - !Ref AWS::NoValue
       Description: KnowKnowledge Base Data Source
       KnowledgeBaseId:
         Ref: KnowledgeBase

@@ -11,30 +11,37 @@
 
   "stack_1_knowledge_base": {
     "StackName":          "sigma-poc-knowledge-base",
+    "Status":             "DEPLOYED",
+    "KnowledgeBaseId":    "8S8WC4DRZY",
     "Template":           "infrastructure/bedrock-KB.yaml",
     "Parameters": {
-      "KnowledgeBaseName":       "sigma-poc-kb",
-      "EmbeddingModelArn":       "arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-embed-text-v2:0",
-      "ChunkingStrategy":        "FIXED_SIZE",
-      "MaxTokens":               "600",
-      "OverlapPercentage":       "10",
-      "S3BucketName":            "sigma-poc-kb-content-825765398662",
-      "CloudFormationBucket":    "sigma-poc-artifacts-825765398662"
+      "pKnowledgeBaseBucketName":        "sigma-poc-kb-content-825765398662",
+      "pInputDocumentUploadFolderPrefix": "sigma/",
+      "pEmbedModel":                     "amazon.titan-embed-text-v2:0",
+      "pChunkingStrategy":               "Fixed-size chunking",
+      "pMaxTokens":                      "600",
+      "pOverlapPercentage":              "10",
+      "pArtifactsBucket":                "sigma-poc-artifacts-825765398662"
     }
   },
 
   "stack_2_rag_solution": {
     "StackName":          "sigma-poc-rag-solution",
+    "Status":             "DEPLOYED",
+    "LexBotId":           "UKCXRKYGFR",
+    "LexBotAliasId":      "SQYD2WAVEK",
+    "ContactFlowId":      "66bf08cf-b1eb-4a9e-ad58-da827c6a1f4d",
     "Template":           "infrastructure/contact-center-RAG-solution.yaml",
     "Parameters": {
-      "LexBotName":              "sigma-poc-bot",
-      "ConversationTurns":       "4",
-      "ConnectInstanceArn":      "arn:aws:connect:us-east-1:825765398662:instance/b2116e6f-1693-4abf-8f91-a47920a8a38c",
-      "ContactFlowName":         "Sigma POC Contact Flow",
-      "KnowledgeBaseId":         "COMPLETAR - se obtiene del output del stack 1 (sigma-poc-knowledge-base)",
-      "KnowledgeBaseS3Bucket":   "sigma-poc-kb-content-825765398662",
-      "LexLocaleName":           "es_419",
-      "CloudFormationBucket":    "sigma-poc-artifacts-825765398662"
+      "pBotName":              "sigma-poc-bot",
+      "pConversationTurns":    "4",
+      "pConnectInstanceARN":   "arn:aws:connect:us-east-1:825765398662:instance/b2116e6f-1693-4abf-8f91-a47920a8a38c",
+      "pContactFlowName":      "Sigma POC Contact Flow",
+      "pKBID":                 "8S8WC4DRZY",
+      "pKBS3Bucket":           "sigma-poc-kb-content-825765398662",
+      "pArtifactsBucket":      "sigma-poc-artifacts-825765398662",
+      "pLexLocaleId":          "es_419",
+      "pLexVoiceId":           "Mia"
     }
   },
 
@@ -42,7 +49,7 @@
     "StackName":          "sigma-poc-providers-db",
     "Template":           "infrastructure/sigma/sigma-providers-db.yaml",
     "Parameters": {
-      "EnvironmentName":         "poc"
+      "EnvironmentName":   "poc"
     }
   },
 
@@ -50,10 +57,10 @@
     "StackName":          "sigma-poc-customer-auth",
     "Template":           "infrastructure/sigma/sigma-customer-auth.yaml",
     "Parameters": {
-      "EnvironmentName":         "poc",
-      "ProvidersTableName":      "sigma-providers-poc",
-      "SessionsTableName":       "sigma-sessions-poc",
-      "ArtifactsBucket":         "sigma-poc-artifacts-825765398662"
+      "EnvironmentName":    "poc",
+      "ProvidersTableName": "sigma-providers-poc",
+      "SessionsTableName":  "sigma-sessions-poc",
+      "ArtifactsBucket":    "sigma-poc-artifacts-825765398662"
     }
   },
 
@@ -61,15 +68,15 @@
     "StackName":          "sigma-poc-proactive-messages",
     "Template":           "infrastructure/sigma/sigma-proactive-messages.yaml",
     "Parameters": {
-      "EnvironmentName":         "poc",
-      "ProvidersTableName":      "sigma-providers-poc",
-      "ProactiveLogTableName":   "sigma-proactive-log-poc",
-      "ConnectInstanceArn":      "arn:aws:connect:us-east-1:825765398662:instance/b2116e6f-1693-4abf-8f91-a47920a8a38c",
-      "RecordatorioCampaignId":  "PENDING - completar despues de crear campana en consola",
-      "BloqueoCampaignId":       "PENDING - completar despues de crear campana en consola",
-      "ArtifactsBucket":         "sigma-poc-artifacts-825765398662",
-      "DaysSinceLastOrderThreshold": "14",
-      "MaxDailyMessagesPerProvider": "1"
+      "EnvironmentName":              "poc",
+      "ProvidersTableName":           "sigma-providers-poc",
+      "ProactiveLogTableName":        "sigma-proactive-log-poc",
+      "ConnectInstanceArn":           "arn:aws:connect:us-east-1:825765398662:instance/b2116e6f-1693-4abf-8f91-a47920a8a38c",
+      "RecordatorioCampaignId":       "PENDING - completar despues de crear campana en consola",
+      "BloqueoCampaignId":            "PENDING - completar despues de crear campana en consola",
+      "ArtifactsBucket":              "sigma-poc-artifacts-825765398662",
+      "DaysSinceLastOrderThreshold":  "14",
+      "MaxDailyMessagesPerProvider":  "1"
     }
   },
 
@@ -79,7 +86,7 @@
     "Parameters": {
       "EnvironmentName":         "poc",
       "ConnectInstanceArn":      "arn:aws:connect:us-east-1:825765398662:instance/b2116e6f-1693-4abf-8f91-a47920a8a38c",
-      "ConnectContactFlowId":    "COMPLETAR - se obtiene del output del stack RAG Solution (sigma-poc-rag-solution)",
+      "ConnectContactFlowId":    "66bf08cf-b1eb-4a9e-ad58-da827c6a1f4d",
       "WhatsAppPhoneNumberId":   "PENDING_EMBEDDED_SIGNUP",
       "WhatsAppWABAId":          "PENDING_EMBEDDED_SIGNUP"
     }

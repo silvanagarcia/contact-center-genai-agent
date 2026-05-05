@@ -72,6 +72,11 @@ Parameters:
     Description: The locale ID for the Lex bot (e.g. en_US, es_419, es_MX)
     Default: en_US
 
+  pLexVoiceId:
+    Type: String
+    Description: Amazon Polly voice ID for the Lex bot (must be valid for the chosen locale; e.g. Matthew for en_US, Lupe for es_419/es_US)
+    Default: Matthew
+
 Metadata:
   AWS::CloudFormation::Interface:
     ParameterGroups:
@@ -422,7 +427,7 @@ Resources:
           Description: !Sub "${pLexLocaleId} locale"
           NluConfidenceThreshold: 0.20
           VoiceSettings:
-            VoiceId: "Matthew"
+            VoiceId: !Ref pLexVoiceId
 
           SlotTypes:
             - Name: "Toggle"
@@ -694,8 +699,6 @@ Resources:
 
               ValueSelectionSetting:
                 ResolutionStrategy: TOP_RESOLUTION
-                AdvancedRecognitionSetting:
-                  AudioRecognitionStrategy: UseSlotValuesAsCustomVocabulary
 
             - Name: "Brand"
               Description: "Hotel brands for the Example Corp Hospitality Group example"

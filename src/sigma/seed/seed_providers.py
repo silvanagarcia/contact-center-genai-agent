@@ -55,12 +55,13 @@ def convert_to_dynamodb_types(item: dict) -> dict:
     for key, value in item.items():
         if value is None:
             continue  # DynamoDB no acepta None/null — omitir el campo
+        elif isinstance(value, bool):
+            # bool debe ir ANTES de int porque bool es subclase de int en Python
+            converted[key] = value
         elif isinstance(value, float):
             converted[key] = Decimal(str(value))
         elif isinstance(value, int):
             converted[key] = Decimal(str(value))
-        elif isinstance(value, bool):
-            converted[key] = value
         else:
             converted[key] = value
     return converted
