@@ -131,7 +131,7 @@ El bot responde en español (es_419). Preguntas de ejemplo:
 "Quiero hablar con un agente"
 ```
 
-> **Nota:** La Lambda de autenticación está desplegada pero **todavía no está conectada al Contact Flow** (ver [Pasos manuales pendientes](#pasos-manuales-pendientes)). El bot funciona en modo anónimo hasta que se conecte.
+> **Nota:** La Lambda de autenticación está conectada al Contact Flow. Al iniciar el chat, el bot identifica al proveedor por número de teléfono automáticamente. Usá cualquiera de los números de la [tabla de proveedores](#proveedores-de-prueba) para ver la autenticación en acción.
 
 ---
 
@@ -228,21 +228,15 @@ El bot tiene los siguientes intents configurados en Lex (es_419):
 
 ## Pasos manuales pendientes
 
-### 🔴 Paso 1 — Conectar Lambda de autenticación al Contact Flow (PRIORITARIO para mañana)
+### ✅ Paso 1 — Lambda de autenticación conectada al Contact Flow
 
-La Lambda `sigma-auth-handler-poc` está desplegada y registrada en Connect, pero falta agregarla al Contact Flow.
+La Lambda `sigma-auth-handler-poc` está desplegada, registrada en Connect, **y conectada al Contact Flow via API**. El flujo actual es:
 
-**En AWS Console → Connect → Contact Flows → "Sigma POC Contact Flow":**
+```
+Welcome → InvokeLambda(sigma-auth-handler-poc) → SetAuthAttrs → SetSessionAttrs → LexBot
+```
 
-1. Abrir el editor visual del Contact Flow
-2. Agregar un bloque **"Invocar función de AWS Lambda"** al principio del flujo (antes del bloque de Lex)
-3. Seleccionar la función: **`sigma-auth-handler-poc`**
-4. Timeout: **8 segundos**
-5. Conectar la salida "Success" al bloque de Lex existente
-6. Conectar la salida "Error" también al bloque de Lex (modo anónimo como fallback)
-7. Guardar y publicar el Contact Flow
-
-**Atributos que devuelve la Lambda (disponibles como `$.External.X` en el Contact Flow):**
+**Atributos que devuelve la Lambda (ya disponibles como Contact Attributes):**
 
 | Atributo | Descripción |
 |---|---|
